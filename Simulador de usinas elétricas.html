@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Simulador de usinas: hidrelétrica, maremotriz e eólica</title>
+<style>
+:root{--bg:#f1f6f7;--surf:#fff;--ink:#12303a;--mut:#53707a;--line:#cbdbe0;--acc:#0b7a8f;--sky:#d8ebf1;--water:#2a8fb0;--ground:#9db0a2;--dam:#7b8a90;--house:#5f7680;--hot:#e8a317;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d191e;--surf:#14262d;--ink:#e3f0f3;--mut:#8fa9b1;--line:#27424b;--acc:#4cc3d9;--sky:#123039;--water:#2d8fb4;--ground:#2c3d38;--dam:#7f9097;--house:#46606a}}
+:root[data-theme="dark"]{--bg:#0d191e;--surf:#14262d;--ink:#e3f0f3;--mut:#8fa9b1;--line:#27424b;--acc:#4cc3d9;--sky:#123039;--water:#2d8fb4;--ground:#2c3d38;--dam:#7f9097;--house:#46606a}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "Avenir Next","Segoe UI",system-ui,sans-serif}
+main{max-width:1040px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:clamp(1.6rem,4vw,2.3rem);line-height:1.15;margin:0 0 6px;letter-spacing:-.01em}
+h2{font-size:1.1rem;margin:28px 0 10px}
+.lead{color:var(--mut);margin:0 0 18px;max-width:62ch}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.tabs button{font:inherit;padding:8px 16px;border:1px solid var(--line);background:var(--surf);color:var(--ink);border-radius:999px;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--acc);border-color:var(--acc);color:#fff}
+button:focus-visible,input:focus-visible{outline:3px solid var(--hot);outline-offset:2px}
+.grid{display:grid;grid-template-columns:minmax(0,1.9fr) minmax(240px,1fr);gap:16px}
+@media(max-width:760px){.grid{grid-template-columns:1fr}}
+canvas{width:100%;height:auto;display:block;border-radius:10px;border:1px solid var(--line)}
+aside{background:var(--surf);border:1px solid var(--line);border-radius:10px;padding:16px}
+label{display:block;font-size:.9rem;color:var(--mut);margin-top:10px}
+label b{color:var(--ink);float:right}
+input[type=range]{width:100%;accent-color:var(--acc)}
+.read{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.read b{display:block;font-size:2rem;line-height:1.1;color:var(--acc)}
+.read small{color:var(--mut)}
+.fm{font-size:.88rem;color:var(--mut);margin:12px 0 0}
+.row{display:grid;grid-template-columns:minmax(120px,1fr) 2fr 52px;gap:10px;align-items:center;margin:8px 0;font-size:.92rem}
+.bar{height:16px;background:var(--line);border-radius:4px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--acc);transition:width .25s}
+.row span:last-child{text-align:right;font-variant-numeric:tabular-nums}
+.note{color:var(--mut);font-size:.88rem;max-width:70ch}
+</style></head><body><main>
+<h1>Simulador de usinas elétricas</h1>
+<p class="lead">Escolha uma usina, mude os controles e veja como a energia se transforma até virar eletricidade.</p>
+<div class="tabs" id="tabs" role="tablist"></div>
+<div class="grid">
+<canvas id="c" width="800" height="450" role="img" aria-label="Animação da usina selecionada"></canvas>
+<aside><p id="ds" style="margin:0"></p><div id="ctl"></div>
+<div class="read">Potência elétrica <b id="pw"></b><small id="hm"></small></div>
+<p class="fm" id="fm"></p></aside></div>
+<h2>Cadeia de transformações de energia</h2>
+<div id="chain"></div>
+<p class="note">A barra mostra quanto da energia inicial ainda resta depois de cada etapa. O restante vira calor, atrito e ruído. Modelo simplificado, com rendimentos típicos.</p>
+</main>
+<script>
+const g=9.81,rho=1000,$=s=>document.querySelector(s);
+const br=x=>x.toFixed(2).replace(".",",");
+const fmt=w=>w>=1e9?br(w/1e9)+" GW":w>=1e6?(w/1e6).toFixed(1).replace(".",",")+" MW":Math.round(w/1e3)+" kW";
+const M={
+hidro:{name:"Hidrelétrica",
+ds:"A água represada, em altura, tem energia potencial. Ao cair pelo conduto forçado, ela ganha velocidade, gira a turbina, e o gerador converte o giro em eletricidade.",
+ctl:[{id:"H",l:"Altura de queda (m)",min:10,max:200,v:80,s:1},{id:"Q",l:"Vazão (m³/s)",min:50,max:1000,v:400,s:10}],
+st:[["Potencial gravitacional da água",1],["Cinética da água (conduto)",.98],["Mecânica (turbina)",.92],["Elétrica (gerador)",.97]],
+P:(v,e)=>e*rho*g*v.Q*v.H,F:(v,e)=>`P = η·ρ·g·Q·H = ${br(e)} × 1000 × 9,81 × ${v.Q} × ${v.H}`},
+mare:{name:"Maremotriz",
+ds:"A maré enche a baía por trás de uma barragem. A diferença de nível entre o mar e a baía move a água pela turbina, nos dois sentidos, e o gerador produz eletricidade.",
+ctl:[{id:"R",l:"Amplitude da maré (m)",min:1,max:12,v:6,s:.5},{id:"A",l:"Área da baía (km²)",min:1,max:50,v:20,s:1}],
+st:[["Potencial da água represada",1],["Aproveitamento do desnível",.5],["Cinética (escoamento)",.95],["Mecânica (turbina bulbo)",.85],["Elétrica (gerador)",.95]],
+P:(v,e)=>e*rho*g*v.A*1e6*v.R*v.R/44712,F:(v,e)=>`P média = η·ρ·g·A·R² / T = ${br(e)} × 1000 × 9,81 × ${v.A}·10⁶ × ${v.R}² / 44712 s (ciclo de 12 h 25 min)`},
+vento:{name:"Eólica",
+ds:"O vento tem energia cinética. As pás extraem parte dela e giram o eixo, e o gerador transforma essa rotação em eletricidade. Não dá para extrair tudo: o limite de Betz é 59,3%.",
+ctl:[{id:"v",l:"Velocidade do vento (m/s)",min:0,max:30,v:11,s:.5},{id:"D",l:"Diâmetro do rotor (m)",min:40,max:160,v:100,s:5}],
+st:[["Cinética do vento",1],["Extração pelo rotor (Cp)",.45],["Mecânica (caixa de engrenagens)",.95],["Elétrica (gerador)",.96]],
+P:(v,e)=>(v.v<3||v.v>25)?0:.5*1.225*Math.PI*(v.D/2)**2*v.v**3*e,F:(v,e)=>`P = ½·ρar·A·v³·η = 0,5 × 1,225 × ${Math.round(Math.PI*(v.D/2)**2)} m² × ${v.v}³ × ${br(e)}. Opera entre 3 e 25 m/s.`}
+};
+let cur="hidro",val={},ph=0,basin=0,ang=0,tAng=0,last=0,parts=[],streaks=[];
+const rm=matchMedia("(prefers-reduced-motion:reduce)").matches;
+function setMode(k){cur=k;const m=M[k];val={};parts=[];basin=0;ph=0;
+ document.querySelectorAll("#tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.k===k));
+ $("#ds").textContent=m.ds;$("#ctl").innerHTML="";
+ m.ctl.forEach(c=>{val[c.id]=c.v;const l=document.createElement("label");l.innerHTML=`${c.l}<b>${c.v}</b><input type="range" min="${c.min}" max="${c.max}" step="${c.s}" value="${c.v}">`;
+  l.querySelector("input").oninput=e=>{val[c.id]=+e.target.value;l.querySelector("b").textContent=e.target.value;refresh()};$("#ctl").appendChild(l)});
+ refresh()}
+function refresh(){const m=M[cur];const e=m.st.slice(1).reduce((a,s)=>a*s[1],1);const P=m.P(val,e);
+ $("#pw").textContent=fmt(P);$("#hm").textContent=P>0?`≈ ${Math.round(P/220).toLocaleString("pt-BR")} residências`+(cur==="mare"?" (média)":""):"turbina parada (vento fora da faixa de operação)";
+ $("#fm").textContent=m.F(val,e);let c=1;
+ $("#chain").innerHTML=m.st.map((s,i)=>{if(i)c*=s[1];return `<div class="row"><span>${s[0]}</span><span class="bar"><i style="width:${(c*100).toFixed(1)}%"></i></span><span>${(c*100).toFixed(0)}%</span></div>`}).join("")}
+Object.keys(M).forEach(k=>{const b=document.createElement("button");b.textContent=M[k].name;b.dataset.k=k;b.setAttribute("role","tab");b.onclick=()=>setMode(k);$("#tabs").appendChild(b)});
+const cv=$("#c"),x=cv.getContext("2d"),cs=getComputedStyle(document.documentElement),C=n=>cs.getPropertyValue(n).trim();
+function turb(px,py,r,a){x.save();x.translate(px,py);x.rotate(a);x.fillStyle=C("--hot");for(let i=0;i<4;i++){x.rotate(Math.PI/2);x.fillRect(-3,0,6,r)}x.beginPath();x.arc(0,0,5,0,7);x.fill();x.restore()}
+function onPath(p,u){const n=p.length-1,s=Math.min(n-.001,u*n),i=Math.floor(s),f=s-i;return[p[i][0]+(p[i+1][0]-p[i][0])*f,p[i][1]+(p[i+1][1]-p[i][1])*f]}
+function flow(p,sp,dir,col){if(!parts.length)for(let i=0;i<36;i++)parts.push(i/36);x.fillStyle=col;parts=parts.map(u=>((u+sp*dir)%1+1)%1);parts.forEach(u=>{const q=onPath(p,u);x.beginPath();x.arc(q[0],q[1],3,0,7);x.fill()})}
+function txt(s,a,b,col){x.fillStyle=col||C("--ink");x.font="15px system-ui,sans-serif";x.fillText(s,a,b)}
+function hidro(dt){const H=val.H,Q=val.Q,ly=330-H*1.1;
+ x.fillStyle=C("--water");x.fillRect(0,ly,360,330-ly);x.fillRect(430,312,370,18);
+ x.fillStyle=C("--ground");x.fillRect(0,330,800,120);
+ x.fillStyle=C("--dam");x.fillRect(360,ly-14,70,344-ly);
+ x.fillStyle=C("--house");x.fillRect(430,268,95,62);
+ tAng+=dt*(2+Q*.012);turb(465,300,17,tAng);
+ x.fillStyle=C("--dam");x.fillRect(495,285,24,30);txt("G",501,306,"#fff");
+ x.strokeStyle=C("--ink");x.lineWidth=2;x.beginPath();x.moveTo(660,330);x.lineTo(660,230);x.moveTo(640,245);x.lineTo(680,245);x.moveTo(519,296);x.lineTo(640,245);x.stroke();
+ const t=performance.now()/400%1,wx=519+(640-519)*t,wy=296+(245-296)*t;x.fillStyle=C("--hot");x.beginPath();x.arc(wx,wy,4,0,7);x.fill();
+ flow([[320,ly+(330-ly)*.6],[372,300],[465,300],[560,321],[790,321]],dt*(Q/1000*.35+.05),1,"#fff");
+ x.strokeStyle=C("--ink");x.lineWidth=1;x.beginPath();x.moveTo(40,ly);x.lineTo(40,330);x.stroke();txt("H = "+H+" m",48,(ly+330)/2);
+ txt("Reservatório",120,Math.min(ly+30,310),"#fff");txt("Rio abaixo",650,310);txt("Turbina",440,262)}
+function mare(dt){const R=val.R,amp=R/2*9;ph+=dt*2*Math.PI/20;const sea=Math.sin(ph)*amp;basin+=(sea-basin)*Math.min(1,dt*.45);const d=(sea-basin)/9;
+ x.fillStyle=C("--water");x.fillRect(0,260-basin,392,80+basin);x.fillRect(408,260-sea,392,80+sea);
+ x.fillStyle=C("--ground");x.fillRect(0,340,800,110);
+ x.fillStyle=C("--dam");x.fillRect(392,180,16,100);x.fillRect(392,320,16,20);
+ tAng+=dt*d*1.4;turb(400,300,17,tAng);
+ if(Math.abs(d)>.15)flow([[330,300],[400,300],[470,300]],dt*Math.min(.6,Math.abs(d)*.12),d>0?-1:1,"#fff");
+ txt("Baía",150,320,"#fff");txt("Mar",620,320,"#fff");txt("Barragem com turbina",300,170);
+ txt("Desnível agora: "+Math.abs(d).toFixed(1).replace(".",",")+" m",20,30);
+ txt(d>.15?"Mar mais alto: água entra na baía":d<-.15?"Baía mais alta: água sai para o mar":"Níveis iguais: turbina quase parada",20,54)}
+function vento(dt){const v=val.v,D=val.D,run=v>=3&&v<=25;if(run)ang+=dt*7*v/(D/2);
+ if(!streaks.length)for(let i=0;i<16;i++)streaks.push({x:Math.random()*800,y:30+i*22});
+ x.fillStyle=C("--ground");x.fillRect(0,400,800,50);
+ x.strokeStyle=C("--mut");x.globalAlpha=.5;x.lineWidth=2;streaks.forEach(s=>{s.x=(s.x+v*dt*20)%860;x.beginPath();x.moveTo(s.x-40,s.y);x.lineTo(s.x,s.y);x.stroke()});x.globalAlpha=1;
+ x.fillStyle=C("--dam");x.beginPath();x.moveTo(393,400);x.lineTo(407,400);x.lineTo(403,190);x.lineTo(397,190);x.fill();x.fillRect(390,183,30,13);
+ x.save();x.translate(400,190);x.rotate(ang);x.fillStyle=C("--ink");const L=D*.6;for(let i=0;i<3;i++){x.rotate(Math.PI*2/3);x.beginPath();x.moveTo(-4,0);x.lineTo(4,0);x.lineTo(1,-L);x.lineTo(-1,-L);x.fill()}x.restore();
+ x.fillStyle=C("--hot");x.beginPath();x.arc(400,190,6,0,7);x.fill();
+ txt("Vento",20,30);txt(run?"Rotor: "+Math.round(7*v/(D/2)*60/(2*Math.PI))+" rpm":"Turbina parada",20,54)}
+function loop(ts){const dt=Math.min(.05,(ts-last)/1000||0)*(rm?.25:1);last=ts;
+ x.fillStyle=C("--sky");x.fillRect(0,0,800,450);({hidro,mare,vento})[cur](dt);requestAnimationFrame(loop)}
+setMode("hidro");requestAnimationFrame(loop);
+</script></body></html>

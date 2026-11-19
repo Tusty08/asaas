@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gráficos de energia: Ep × Ek × Em</title>
+<style>
+:root{--bg:#f1f6f7;--surf:#fff;--ink:#12303a;--mut:#53707a;--line:#cbdbe0;--acc:#0b7a8f;--sky:#d8ebf1;--water:#2a8fb0;--dam:#7b8a90;--ep:#1f78b4;--ek:#e08a00;--ed:#8a8f94;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d191e;--surf:#14262d;--ink:#e3f0f3;--mut:#8fa9b1;--line:#27424b;--acc:#4cc3d9;--sky:#123039;--ep:#4aa8e0;--ek:#f2a31f;--ed:#9aa3a8}}
+:root[data-theme="dark"]{--bg:#0d191e;--surf:#14262d;--ink:#e3f0f3;--mut:#8fa9b1;--line:#27424b;--acc:#4cc3d9;--sky:#123039;--ep:#4aa8e0;--ek:#f2a31f;--ed:#9aa3a8}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "Avenir Next","Segoe UI",system-ui,sans-serif}
+main{max-width:1060px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:clamp(1.5rem,4vw,2.2rem);line-height:1.15;margin:0 0 6px}
+.lead{color:var(--mut);margin:0 0 16px;max-width:66ch}
+.ctl{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:4px 18px;background:var(--surf);border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin-bottom:14px}
+label{display:block;font-size:.88rem;color:var(--mut)}label b{float:right;color:var(--ink)}
+input[type=range]{width:100%;accent-color:var(--acc)}
+.btns{display:flex;gap:8px;flex-wrap:wrap;align-items:end}
+button{font:inherit;padding:7px 14px;border:1px solid var(--line);background:var(--surf);color:var(--ink);border-radius:999px;cursor:pointer}
+button[aria-pressed="true"]{background:var(--acc);border-color:var(--acc);color:#fff}
+button:focus-visible,input:focus-visible{outline:3px solid #e8a317;outline-offset:2px}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.7fr);gap:14px}
+@media(max-width:760px){.grid{grid-template-columns:1fr}}
+canvas{width:100%;height:auto;display:block;border-radius:10px;border:1px solid var(--line);background:var(--surf)}
+.rd{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-top:14px}
+.rd div{background:var(--surf);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:.85rem;color:var(--mut)}
+.rd b{display:block;font-size:1.15rem;color:var(--ink);font-variant-numeric:tabular-nums}
+.note{color:var(--mut);font-size:.9rem;max-width:72ch}
+</style></head><body><main>
+<h1>Energia potencial, cinética e mecânica</h1>
+<p class="lead">Uma massa de água cai pelo conduto de uma hidrelétrica. Veja como Ep, Ek e Em mudam ao longo da queda, com e sem perdas por atrito.</p>
+<div class="ctl">
+<label>Massa de água (kg)<b id="mv">100</b><input id="m" type="range" min="10" max="1000" step="10" value="100"></label>
+<label>Altura de queda H (m)<b id="Hv">80</b><input id="H" type="range" min="10" max="200" step="5" value="80"></label>
+<label>Perda por atrito (%)<b id="fv">0</b><input id="f" type="range" min="0" max="30" step="1" value="0"></label>
+<label>Instante da queda<b id="sv">0%</b><input id="sc" type="range" min="0" max="1000" value="0"></label>
+<div class="btns"><button id="pp">Pausar</button><button id="bt" aria-pressed="true">Eixo: tempo</button><button id="bh" aria-pressed="false">Eixo: altura</button></div>
+</div>
+<div class="grid"><canvas id="ca" width="360" height="400" role="img" aria-label="Água caindo pelo conduto até a turbina"></canvas>
+<canvas id="cg" width="640" height="400" role="img" aria-label="Gráfico de Ep, Ek e Em"></canvas></div>
+<div class="rd"><div>Altura h<b id="rh"></b></div><div>Velocidade v<b id="rv"></b></div><div>Ep = m·g·h<b id="rp"></b></div><div>Ek = ½·m·v²<b id="rk"></b></div><div>Em = Ep + Ek<b id="rm"></b></div><div>Calor (atrito)<b id="rd"></b></div></div>
+<p class="note" id="nt"></p>
+</main>
+<script>
+const $=s=>document.querySelector(s),g=9.81,P={m:100,H:80,f:0},S={t:0,play:true,mode:"t",hold:0,ang:0};
+const rm=matchMedia("(prefers-reduced-motion:reduce)").matches,cs=getComputedStyle(document.documentElement),C=n=>cs.getPropertyValue(n).trim();
+const A=()=>g*(1-P.f/100),T=()=>Math.sqrt(2*P.H/A());
+const E=s=>{const w=P.m*g*P.H,ep=w*(1-s),ed=w*s*P.f/100,ek=w*s-ed;return{ep,ek,ed,em:ep+ek,w}};
+const kJ=e=>(e/1000).toFixed(1).replace(".",",")+" kJ",n1=x=>x.toFixed(1).replace(".",",");
+[["m","mv"],["H","Hv"],["f","fv"]].forEach(([k,o])=>$("#"+k).oninput=e=>{P[k]=+e.target.value;$("#"+o).textContent=e.target.value;S.t=0;S.hold=0});
+$("#sc").oninput=e=>{S.play=false;$("#pp").textContent="Continuar";S.t=e.target.value/1000*T()};
+$("#pp").onclick=()=>{S.play=!S.play;$("#pp").textContent=S.play?"Pausar":"Continuar"};
+function setMode(k){S.mode=k;$("#bt").setAttribute("aria-pressed",k==="t");$("#bh").setAttribute("aria-pressed",k==="h")}
+$("#bt").onclick=()=>setMode("t");$("#bh").onclick=()=>setMode("h");
+const ca=$("#ca").getContext("2d"),cg=$("#cg").getContext("2d");
+function drawA(s,e,v,dt){const x=ca;x.fillStyle=C("--sky");x.fillRect(0,0,360,400);
+ x.fillStyle=C("--water");x.fillRect(0,40,70,60);
+ x.strokeStyle=C("--dam");x.lineWidth=12;x.lineCap="round";x.beginPath();x.moveTo(70,80);x.lineTo(240,330);x.stroke();
+ const bx=70+170*s,by=80+250*s;x.fillStyle=C("--water");x.strokeStyle="#fff";x.lineWidth=2;x.beginPath();x.arc(bx,by,10,0,7);x.fill();x.stroke();
+ S.ang+=dt*v*.35;x.save();x.translate(265,345);x.rotate(S.ang);x.fillStyle=C("--ek");for(let i=0;i<4;i++){x.rotate(Math.PI/2);x.fillRect(-3,0,6,24)}x.restore();
+ x.fillStyle=C("--ink");x.font="13px system-ui,sans-serif";x.fillText("Reservatório",6,32);x.fillText("Turbina",232,392);x.fillText("H",14,250);
+ x.strokeStyle=C("--mut");x.lineWidth=1;x.beginPath();x.moveTo(24,100);x.lineTo(24,345);x.stroke();
+ const bh=300,top=50;let y=top;[["--ep",e.ep],["--ek",e.ek],["--ed",e.ed]].forEach(([c,val])=>{const h=val/e.w*bh;x.fillStyle=C(c);x.fillRect(318,y,26,h);y+=h});
+ x.strokeStyle=C("--ink");x.strokeRect(318,top,26,bh);x.fillStyle=C("--ink");x.fillText("Energia",306,40)}
+function drawG(s,e){const x=cg,W=640,Hh=400,l=72,r=18,t=24,b=52,pw=W-l-r,ph=Hh-t-b,w=e.w;
+ const X=u=>l+u*pw,Y=en=>t+ph-en/w*ph,ux=q=>S.mode==="t"?Math.sqrt(q):q;
+ x.fillStyle=C("--surf");x.fillRect(0,0,W,Hh);x.font="13px system-ui,sans-serif";x.lineWidth=1;
+ for(let i=0;i<=4;i++){const yy=t+ph*i/4,xx=l+pw*i/4;x.strokeStyle=C("--line");x.beginPath();x.moveTo(l,yy);x.lineTo(W-r,yy);x.moveTo(xx,t);x.lineTo(xx,t+ph);x.stroke();
+  x.fillStyle=C("--mut");x.textAlign="right";x.fillText(Math.round(w*(1-i/4)/1000)+" kJ",l-8,yy+4);
+  x.textAlign="center";x.fillText(S.mode==="t"?n1(T()*i/4)+" s":Math.round(P.H*(1-i/4))+" m",xx,t+ph+20)}
+ x.fillStyle=C("--ink");x.fillText(S.mode==="t"?"Tempo de queda":"Altura h da água (a água desce da esquerda para a direita)",l+pw/2,Hh-10);
+ x.save();x.translate(16,t+ph/2);x.rotate(-Math.PI/2);x.fillText("Energia (kJ)",0,0);x.restore();
+ [["--ed","ed",[6,5],2],["--ep","ep",[],3],["--ek","ek",[],3],["--ink","em",[],4]].forEach(([c,k,d,lw])=>{x.strokeStyle=C(c);x.lineWidth=lw;x.setLineDash(d);x.beginPath();
+  for(let i=0;i<=120;i++){const q=i/120,v=E(q)[k];i?x.lineTo(X(ux(q)),Y(v)):x.moveTo(X(ux(q)),Y(v))}x.stroke()});x.setLineDash([]);
+ [["--ep","Ep"],["--ek","Ek"],["--ink","Em = Ep + Ek"],["--ed","Calor"]].forEach(([c,tx],i)=>{x.fillStyle=C(c);x.textAlign="left";x.fillRect(l+10+i*110,8,14,4);x.fillText(tx,l+28+i*110,14)});
+ const cx=X(ux(s));x.strokeStyle=C("--mut");x.lineWidth=1;x.setLineDash([3,4]);x.beginPath();x.moveTo(cx,t);x.lineTo(cx,t+ph);x.stroke();x.setLineDash([]);
+ [["--ep",e.ep],["--ek",e.ek],["--ink",e.em]].forEach(([c,v])=>{x.fillStyle=C(c);x.beginPath();x.arc(cx,Y(v),5,0,7);x.fill()})}
+let last=0;
+function loop(ts){const dt=Math.min(.05,(ts-last)/1000||0)*(rm?.4:1);last=ts;
+ if(S.play){S.t+=dt;if(S.t>=T()){S.t=T();S.hold+=dt;if(S.hold>1.2){S.t=0;S.hold=0}}$("#sc").value=S.t/T()*1000}
+ const s=Math.min(1,(S.t/T())**2),e=E(s),v=Math.sqrt(2*e.ek/P.m);
+ drawA(s,e,v,dt);drawG(s,e);
+ $("#rh").textContent=n1(P.H*(1-s))+" m";$("#rv").textContent=n1(v)+" m/s";$("#rp").textContent=kJ(e.ep);$("#rk").textContent=kJ(e.ek);$("#rm").textContent=kJ(e.em);$("#rd").textContent=kJ(e.ed);
+ $("#sv").textContent=Math.round(S.t/T()*100)+"%";
+ $("#nt").textContent=P.f===0?"Sem perdas, Em permanece constante: o que Ep perde, Ek ganha (Ep + Ek = m·g·H).":"Com atrito, parte da energia vira calor. Em diminui ao longo da queda, e Ek final é menor que m·g·H.";
+ requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+</script></body></html>
